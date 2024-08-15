@@ -1,14 +1,13 @@
 """Main module."""
-from librosa import load, get_samplerate, pitch_tuning, hz_to_midi, time_to_samples, onset, stft
-from scipy.signal import find_peaks, hilbert, peak_widths, butter, filtfilt, resample
+from librosa import load, pitch_tuning, hz_to_midi, time_to_samples
+from scipy.signal import find_peaks, hilbert, peak_widths, butter, filtfilt
 import numpy as np
-import pretty_midi as pm
-import matplotlib.pyplot as plt
 import crepe
 from scipy.io import wavfile
-
-import os.path
 from pathlib import Path
+from fonctions import *
+
+
 
 def run_crepe(audio_path):
     sr, audio = wavfile.read(str(audio_path))
@@ -71,7 +70,7 @@ def load_audio(audio_path, cached_amp_envelope_path, default_sample_rate, detect
     
     return sr, y, filtered_amp_envelope, detect_amplitude    
 
-
+           
 def process(freqs,
             conf,
             audio_path,
@@ -79,7 +78,7 @@ def process(freqs,
             sensitivity=0.001,
             use_smoothing=False,
             min_duration=0.03,
-            min_velocity=6,
+            min_velocity=9,
             disable_splitting=False,
             use_cwd=True,
             tuning_offset=False,
@@ -88,8 +87,18 @@ def process(freqs,
             default_sample_rate=44100,
             save_analysis_files=False,):
     
+    display = False
+    # Etape 1 : Chargement de l'audio
+   
+    fname = audio_path.stem
+    note_list,_ = Create_Note_list()
     cached_amp_envelope_path = audio_path.with_suffix(".amp_envelope.npz")
     sr, y, filtered_amp_envelope, detect_amplitude = load_audio(audio_path, cached_amp_envelope_path, default_sample_rate, detect_amplitude, (save_analysis_files or save_amp_envelope))
+    note, midi_note = get_note_guessed_from_fname(note_list=note_list, fname=fname)
+    print(f"Note guessed from filename: {note} ({midi_note})")
+    
+    if display:
+      DisplayAudio(audio_path)
 
     if use_cwd:
         # write to location that the bin was run from
@@ -98,49 +107,53 @@ def process(freqs,
         # write to same folder as the orignal audio file
         output_filename = str(audio_path.parent) + "/" + audio_path.stem
 
-    print(os.path.abspath(audio_path))
+    # print(os.path.abspath(audio_path))
     
+    # Étape 2 : Sauvegarde des fichiers d'analyse (optionnel)
     if save_analysis_files:
-        f0_path = audio_path.with_suffix(".f0.csv")
+        f0_folder_path = Path('F0')
+        f0_folder_path.mkdir(parents=True, exist_ok=True)
+        f0_path =  Path("/F0/"+audio_path.stem).with_suffix(".f0.csv")
         if not f0_path.exists():
             print(f"Saving f0 to {f0_path}")
             save_f0(f0_path, freqs, conf)  
 
+    # Étape 3 : Détection des onsets
+    
     if not disable_splitting:
-        onsets_path = str(audio_path.with_suffix('.onsets.npz'))
-        if not os.path.exists(onsets_path):
-            print(f"Onsets file not found at {onsets_path}")
-            print("Running onset detection...")
-            
-            from madmom.features import CNNOnsetProcessor
-            
-            onset_activations = CNNOnsetProcessor()(str(audio_path))
-            if save_analysis_files:
-                np.savez(onsets_path, activations=onset_activations)
-        else:
-            print(f"Loading onsets from {onsets_path}")
-            onset_activations = np.load(onsets_path, allow_pickle=True)['activations']
+        # Exemple d'utilisation
+        onsets = detect_onsets(audio_path, Display=False)
+    
+        # onset_path = audio_path.with_suffix('_onsets.txt')
+        # onsets = read_onsets(onset_path)
+        # print(onsets)
 
-        onsets = np.zeros_like(onset_activations)
-        onsets[find_peaks(onset_activations, distance=4, height=0.8)[0]] = 1
-
+    
+    # Étape 4 : Calcul du décalage de l'accordage
     if tuning_offset == False:
         tuning_offset = calculate_tuning_offset(freqs)
     else:
         tuning_offset = tuning_offset / 100
-
+    
+    
+    # Étape 5 : Conversion des fréquences en pitch MIDI
     # get pitch gradient
-    midi_pitch = freqs_to_midi(freqs, tuning_offset)
-    pitch_changes = np.abs(np.gradient(midi_pitch))
+    midi_pitch = freqs_to_midi(freqs)
+
+    
+    pitch_changes = np.abs(np.gradient(midi_pitch))# Calcul des changements de pitch
     pitch_changes = np.interp(pitch_changes,
                               (pitch_changes.min(), pitch_changes.max()),
-                              (0, 1))
-
+                              (0, 1))# Normalisation des changements de pitch
+  
+    
+    # Étape 6 : Détection des pics de confiance
     # get confidence peaks with peak widths (prominences)
     conf_peaks, conf_peak_properties = find_peaks(1 - conf,
                                                   distance=4,
                                                   prominence=sensitivity)
-
+    
+   
     # combine pitch changes and confidence peaks to get change point signal
     change_point_signal = (1 - conf) * pitch_changes
     change_point_signal = np.interp(
@@ -149,16 +162,24 @@ def process(freqs,
     peaks, peak_properties = find_peaks(change_point_signal,
                                         distance=4,
                                         prominence=sensitivity)
+    
     _, _, transition_starts, transition_ends = peak_widths(change_point_signal, peaks, rel_height=0.5)
-    transition_starts = list(map(int, np.round(transition_starts)))
-    transition_ends = list(map(int, np.round(transition_ends)))
+    # transition_starts = list(map(int, np.round(transition_starts)))
+    #transition_ends = list(map(int, np.round(transition_ends)))
 
+    _, _, transition_starts_conf, transition_ends_conf = peak_widths(change_point_signal, conf_peaks, rel_height=0.5)
+    transition_starts = list(map(int, np.round(transition_starts_conf)))
+    transition_ends = list(map(int, np.round(transition_ends_conf)))
+   
+    # Étape 7 : Détection des régions de notes candidates
     # get candidate note regions - any point between two peaks in the change point signal
     transitions = [(s, f, 'transition') for (s, f) in zip(transition_starts, transition_ends)]
+  
     note_starts = [0] + transition_ends
     note_ends = transition_starts + [len(change_point_signal) + 1]
     note_regions = [(s, f, 'note') for (s, f) in (zip(note_starts, note_ends))]
 
+    # Étape 8 : Détection de l'amplitude (optionnel)
     if detect_amplitude:
         # take the amplitudes within 6 sigma of the mean
         # helps to clean up outliers in amplitude scaling as we are not looking for 100% accuracy
@@ -167,7 +188,11 @@ def process(freqs,
         # filtered_amp_envelope = amp_envelope.copy()
         filtered_amp_envelope[filtered_amp_envelope > amp_mean + (6 * amp_sd)] = 0
         global_max_amp = max(filtered_amp_envelope)
+ 
 
+   
+
+    # Étape 9 : Création de la liste des segments
     segment_list = []
     for a, b, label in sum(zip(note_regions, transitions), ()):
         if label == 'transition':
@@ -183,11 +208,19 @@ def process(freqs,
         if detect_amplitude:
             max_amp = np.max(filtered_amp_envelope[a:b])
             scaled_max_amp = np.interp(max_amp, (0, global_max_amp), (0, 127))
+          
         else:
             scaled_max_amp = 80
-
+        
+        # Nouvelle etape : filtrer les fréquences pour ne gardes que celle autour de la note que l'on veut détecter
+        if np.round(np.median(midi_pitch[a:b]))== midi_note:
+            pitch= np.round(np.median(midi_pitch[a:b]))
+            print(f"midi pitch: {pitch}")
+        else:
+            pitch=0
         segment_list.append({
-            'pitch': np.round(np.median(midi_pitch[a:b])),
+            'pitch': pitch,
+            'freq': np.median(freqs[a:b]),
             'conf': np.median(conf[a:b]),
             'transition_strength': 1 - conf[a], # TODO: make use of the dip in confidence as a measure of how strong an onset is
             'amplitude': scaled_max_amp,
@@ -195,6 +228,7 @@ def process(freqs,
             'finish_idx': b,
         })
 
+    ## Étape 10 : Filtrage et fusion des segments
     # segment list contains our candidate notes
     # now we iterate through them and merge if two adjacent segments have the same median pitch
     notes = []
@@ -216,17 +250,24 @@ def process(freqs,
     if len(sub_list) > 0:
         notes.append(sub_list)
 
-    output_midi = pm.PrettyMIDI()
-    instrument = pm.Instrument(
-        program=pm.instrument_name_to_program('Acoustic Grand Piano'))
 
+    # garder les notes si le pitch coorespond à la note
+    # Étape 11 : Création des notes de sortie
+  
     velocities = []
     durations = []
     output_notes = []
-
+    min_diff=8
     # Filter out notes that are too short or too quiet
     for x_s in notes:
-        x_s_filt = [x for x in x_s if x['amplitude'] > min_velocity]
+        
+        #x_s_filt = [x for x in x_s if x['amplitude'] > min_velocity and abs(x['pitch']-midi_note)<min_diff]
+        x_s_filt = [x for x in x_s if x['amplitude'] > min_velocity and midi_note-1<=x['pitch']<=midi_note+1]
+        # print x_s_filt['amplitude']
+        
+        #x_s_filt = [x for x in x_s if x['pitch']==midi_note]
+        #x_s_filt = [x for x in x_s if abs(x['pitch']-midi_note)<min_diff]    
+       
         if len(x_s_filt) == 0:
             continue
         median_pitch = np.median(np.array([y['pitch'] for y in x_s_filt]))
@@ -246,22 +287,25 @@ def process(freqs,
         # TODO: make use of confidence strength
         valid_confidence = True  # median_confidence > 0.1
 
-        if valid_amplitude and valid_confidence and valid_duration:
-            output_notes.append({
-                'pitch':
-                    int(np.round(median_pitch)),
-                'velocity':
-                    round(scaled_max_amp),
-                'start_idx':
-                    seg_start,
-                'finish_idx':
-                    seg_end,
-                'conf':
-                    median_confidence,
-                'transition_strength':
-                    x_s[-1]['transition_strength']
-            })
-
+        #if valid_amplitude and valid_confidence and valid_duration:
+        output_notes.append({
+            'pitch':
+                int(np.round(median_pitch)),
+            'freq':
+                x_s_filt[0]['freq'],
+            'velocity':
+                round(scaled_max_amp),
+            'start_idx':
+                seg_start,
+            'finish_idx':
+                seg_end,
+            'conf':
+                median_confidence,
+            'transition_strength':
+                x_s[-1]['transition_strength']
+        })
+   
+    # Étape 13 : Gestion des notes répétées 
     # Handle repeated notes
     # Here we use a standard onset detection algorithm from madmom
     # with a high threshold (0.8) to re-split notes that are repeated
@@ -293,7 +337,7 @@ def process(freqs,
             new_note['finish_idx'] = n_f
             onset_separated_notes.append(new_note)
             output_notes = onset_separated_notes
-
+    
     if detect_amplitude:
         # Trim notes that fall below a certain amplitude threshold
         timed_output_notes = []
@@ -334,19 +378,6 @@ def process(freqs,
             else:
                 timed_note['start'] = s * 0.01
                 timed_note['finish'] = f * 0.01
-
-    for n in timed_output_notes:
-        # remove invalid notes
-        if n['start'] >= n['finish']:
-            continue
-
-        instrument.notes.append(
-            pm.Note(start=n['start'],
-                    end=n['finish'],
-                    pitch=n['pitch'],
-                    velocity=n['velocity']))
-
-    output_midi.instruments.append(instrument)
-    output_midi.write(f'{output_filename}.{output_label}.mid')
-
-    return f"{output_filename}.{output_label}.mid"
+        
+  
+    return timed_output_notes, filtered_amp_envelope
