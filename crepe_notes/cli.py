@@ -29,10 +29,12 @@ def main(f0, audio_path, output_label, midi_tempo,sensitivity, min_duration, min
 
     if audio_path.is_dir():
       print("processing folder ",audio_path)
+      all_notes=[]
       for audio in audio_path.glob('*.wav'):
         audio = Path(audio)
         notes,filtered_amp_envelope = process_audio(audio, f0, output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files)
-        transcribe_audio(notes,filtered_amp_envelope,output_midi,instrument,audio,output_label)
+        all_notes.extend(notes) 
+      transcribe_audio(all_notes,filtered_amp_envelope,output_midi,instrument,audio,output_label,direction=True)
     else:
       print("processing folder ",audio_path)
       audio_path = Path(audio_path)
@@ -51,13 +53,12 @@ def process_audio(audio_path,f0, output_label, sensitivity, min_duration, min_ve
 
   """CREPE notes - get midi or discrete notes from the CREPE pitch tracker"""
   click.echo(click.format_filename(audio_path))
-  notes ,filtered_amp_envelope= process(frequency, confidence, audio_path, output_label=output_label, sensitivity=sensitivity, use_smoothing=use_smoothing,
+  notes ,filtered_amp_envelope= process(frequency, confidence, audio_path, sensitivity=sensitivity, use_smoothing=use_smoothing,
           min_duration=min_duration, min_velocity=min_velocity, disable_splitting=disable_splitting, use_cwd=use_cwd,
           tuning_offset=tuning_offset, save_analysis_files=save_analysis_files)
-
   return notes,filtered_amp_envelope
 
-def transcribe_audio(notes,filtered_amp_envelope,output_midi,instrument,audio_path,output_label):
+def transcribe_audio(notes,filtered_amp_envelope,output_midi,instrument,audio_path,output_label,direction=False):
 
   for n in notes:
       # remove invalid notes
@@ -71,17 +72,20 @@ def transcribe_audio(notes,filtered_amp_envelope,output_midi,instrument,audio_pa
                   velocity=100))
 
   end_audio=len(filtered_amp_envelope)*0.01
+  
+  if len(notes)!=0:
+    note = pm.Note(
+        velocity=0,
+        pitch=0,
+        start=notes[-1]['finish'],
+        end=end_audio)
 
-  ecart=end_audio-notes[-1]['finish']
-  note = pm.Note(
-      velocity=0,
-      pitch=0,
-      start=notes[-1]['finish'],
-      end=end_audio)
-
-  instrument.notes.append(note)
+    instrument.notes.append(note)
   output_midi.instruments.append(instrument)
-  output_midi.write(f'{audio_path.stem + output_label}.mid')
+  if direction :
+    output_midi.write(f'{output_label}.mid')
+  else :
+    output_midi.write(f'{audio_path.stem + output_label}.mid')
 
 if __name__ == "__main__":
     main()  # pragma: no cover

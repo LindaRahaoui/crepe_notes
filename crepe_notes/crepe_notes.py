@@ -70,11 +70,11 @@ def load_audio(audio_path, cached_amp_envelope_path, default_sample_rate, detect
     
     return sr, y, filtered_amp_envelope, detect_amplitude    
 
-           
+
+
 def process(freqs,
             conf,
             audio_path,
-            output_label="transcription",
             sensitivity=0.001,
             use_smoothing=False,
             min_duration=0.03,
@@ -89,7 +89,6 @@ def process(freqs,
     
     display = False
     # Etape 1 : Chargement de l'audio
-   
     fname = audio_path.stem
     note_list,_ = Create_Note_list()
     cached_amp_envelope_path = audio_path.with_suffix(".amp_envelope.npz")
@@ -107,9 +106,8 @@ def process(freqs,
         # write to same folder as the orignal audio file
         output_filename = str(audio_path.parent) + "/" + audio_path.stem
 
-    # print(os.path.abspath(audio_path))
     
-    # Étape 2 : Sauvegarde des fichiers d'analyse (optionnel)
+    # Étape 2 : Sauvegarde des fichiers d'analyses (optionnel)
     if save_analysis_files:
         f0_folder_path = Path('F0')
         f0_folder_path.mkdir(parents=True, exist_ok=True)
@@ -118,23 +116,20 @@ def process(freqs,
             print(f"Saving f0 to {f0_path}")
             save_f0(f0_path, freqs, conf)  
 
-    # Étape 3 : Détection des onsets
-    
+    # Étape 3 : Détection des onsets avec madmom
     if not disable_splitting:
-        # Exemple d'utilisation
+
         onsets = detect_onsets(audio_path, Display=False)
-    
+        # # Chargemnt des onsets 
         # onset_path = audio_path.with_suffix('_onsets.txt')
         # onsets = read_onsets(onset_path)
         # print(onsets)
 
-    
     # Étape 4 : Calcul du décalage de l'accordage
     if tuning_offset == False:
         tuning_offset = calculate_tuning_offset(freqs)
     else:
         tuning_offset = tuning_offset / 100
-    
     
     # Étape 5 : Conversion des fréquences en pitch MIDI
     # get pitch gradient
@@ -190,8 +185,6 @@ def process(freqs,
         global_max_amp = max(filtered_amp_envelope)
  
 
-   
-
     # Étape 9 : Création de la liste des segments
     segment_list = []
     for a, b, label in sum(zip(note_regions, transitions), ()):
@@ -215,7 +208,7 @@ def process(freqs,
         # Nouvelle etape : filtrer les fréquences pour ne gardes que celle autour de la note que l'on veut détecter
         if np.round(np.median(midi_pitch[a:b]))== midi_note:
             pitch= np.round(np.median(midi_pitch[a:b]))
-            print(f"midi pitch: {pitch}")
+            # print(f"midi pitch: {pitch}")
         else:
             pitch=0
         segment_list.append({
@@ -379,5 +372,5 @@ def process(freqs,
                 timed_note['start'] = s * 0.01
                 timed_note['finish'] = f * 0.01
         
-  
+    
     return timed_output_notes, filtered_amp_envelope
