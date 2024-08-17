@@ -6,10 +6,13 @@ import crepe
 from scipy.io import wavfile
 from pathlib import Path
 from fonctions import *
-
-
+import warnings
+warnings.filterwarnings("ignore")  
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 def run_crepe(audio_path):
+    print("run")
     sr, audio = wavfile.read(str(audio_path))
     time, frequency, confidence, activation = crepe.predict(audio, sr, viterbi=True)
     
@@ -30,7 +33,7 @@ def freqs_to_midi(freqs, tuning_offset=0):
 
 def calculate_tuning_offset(freqs):
     tuning_offset = pitch_tuning(freqs)
-    print(f"Tuning offset: {tuning_offset * 100} cents")
+    # print(f"Tuning offset: {tuning_offset * 100} cents")
     return tuning_offset
 
 
@@ -94,7 +97,7 @@ def process(freqs,
     cached_amp_envelope_path = audio_path.with_suffix(".amp_envelope.npz")
     sr, y, filtered_amp_envelope, detect_amplitude = load_audio(audio_path, cached_amp_envelope_path, default_sample_rate, detect_amplitude, (save_analysis_files or save_amp_envelope))
     note, midi_note = get_note_guessed_from_fname(note_list=note_list, fname=fname)
-    print(f"Note guessed from filename: {note} ({midi_note})")
+    # print(f"Note guessed from filename: {note} ({midi_note})")
     
     if display:
       DisplayAudio(audio_path)
@@ -109,12 +112,16 @@ def process(freqs,
     
     # Étape 2 : Sauvegarde des fichiers d'analyses (optionnel)
     if save_analysis_files:
-        f0_folder_path = Path('F0')
+        f0_folder_path = audio_path.parent / "F0"
         f0_folder_path.mkdir(parents=True, exist_ok=True)
-        f0_path =  Path("/F0/"+audio_path.stem).with_suffix(".f0.csv")
+
+        # Définir le chemin complet pour le fichier .f0.csv à l'intérieur du dossier "F0"
+        f0_path = f0_folder_path / audio_path.with_suffix(".f0.csv").name
+
+        # Vérifier si le fichier .f0.csv n'existe pas déjà et l'enregistrer
         if not f0_path.exists():
-            print(f"Saving f0 to {f0_path}")
-            save_f0(f0_path, freqs, conf)  
+            # print(f"Saving f0 to {f0_path}")
+            save_f0(f0_path, freqs, conf)
 
     # Étape 3 : Détection des onsets avec madmom
     if not disable_splitting:
