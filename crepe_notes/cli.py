@@ -33,57 +33,69 @@ sys.stderr = stderr
 @click.option('--f0', type=click.Path(exists=True))
 @click.option('--save-analysis-files', is_flag=True, default=False, help='Save f0, madmom onsets and amp envelope as files')
 @click.option('--not-combined-file', is_flag=True, default=True, help='Save the prediction into one file combined')
+@click.option('--post-process', is_flag=True, default=False, help='Save the prediction into one file combined')
 @click.argument('audio_path', type=click.Path(exists=True, path_type=pathlib.Path))
 @click.help_option()
 
-def main(f0, audio_path, output_label, save_dir, not_combined_file, midi_tempo, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files):
 
+def main(f0, audio_path, output_label, save_dir, not_combined_file, midi_tempo, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files, post_process):
+    if post_process:
+      print("POST PROCESS ON")
     # Définir le répertoire de sauvegarde par défaut
     if save_dir is None:
-        save_dir = audio_path.parent / "Prédictions" if audio_path.is_file() else audio_path / "Prédictions"
+        folder_name = "Prédictions_post_proc" if post_process else "Prédictions"
+        save_dir = audio_path.parent / folder_name if audio_path.is_file() else audio_path / folder_name
     
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     
-    
     if audio_path.is_dir():
         output_midi = pm.PrettyMIDI(initial_tempo=midi_tempo)
-        instrument = pm.Instrument(
-        program=pm.instrument_name_to_program('Acoustic Grand Piano'))
+        instrument = pm.Instrument(program=pm.instrument_name_to_program('Acoustic Grand Piano'))
 
         # Liste des fichiers .wav à traiter
         audio_files = list(audio_path.glob('*.wav'))
         if not_combined_file:
-            print("combined")
+            print("Combined MIDI")
             all_notes = []
             with tqdm(total=len(audio_files), desc="Processing files", unit="file", bar_format='{l_bar}{bar} {percentage:3.0f}%') as pbar:
                 
                 for audio in audio_files:
                     audio = Path(audio)
                     notes, filtered_amp_envelope = process_audio(audio, f0, output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files)
+                    
+                    if post_process:
+                        notes = post_process_notes(notes)
+                    
                     all_notes.extend(notes)
                     pbar.update(1)  # Mise à jour de la barre de progression après chaque fichier
 
-            transcribe_audio(all_notes, filtered_amp_envelope, output_midi, instrument, save_dir, "Combined"+output_label,audio_path,direction=True)
+            transcribe_audio(all_notes, filtered_amp_envelope, output_midi, instrument, save_dir, "Combined_" + output_label, audio_path, direction=True)
         else:
-            print("not combined")
+            print("Not combined MIDI")
             with tqdm(total=len(audio_files), desc="Processing files", unit="file", bar_format='{l_bar}{bar} {percentage:3.0f}%') as pbar:
                 for audio in audio_files:
                     output_midi = pm.PrettyMIDI(initial_tempo=midi_tempo)
-                    instrument = pm.Instrument(
-                    program=pm.instrument_name_to_program('Acoustic Grand Piano'))
+                    instrument = pm.Instrument(program=pm.instrument_name_to_program('Acoustic Grand Piano'))
                     audio = Path(audio)
                     notes, filtered_amp_envelope = process_audio(audio, f0, output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files)
-                    transcribe_audio(notes, filtered_amp_envelope, output_midi, instrument, save_dir, output_label,audio)
+                    
+                    if post_process:
+                        notes = post_process_notes(notes)
+                    
+                    transcribe_audio(notes, filtered_amp_envelope, output_midi, instrument, save_dir, output_label, audio)
                     pbar.update(1)  # Mise à jour de la barre de progression après chaque fichier
     else:
         print("single file")
         output_midi = pm.PrettyMIDI(initial_tempo=midi_tempo)
-        instrument = pm.Instrument(
-        program=pm.instrument_name_to_program('Acoustic Grand Piano'))
+        instrument = pm.Instrument(program=pm.instrument_name_to_program('Acoustic Grand Piano'))
         audio_path = Path(audio_path)
         notes, filtered_amp_envelope = process_audio(audio_path, f0, output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files)
-        transcribe_audio(notes, filtered_amp_envelope, output_midi, instrument, save_dir, output_label,audio_path)
+        
+        if post_process:
+            notes = post_process_notes(notes)
+        
+        transcribe_audio(notes, filtered_amp_envelope, output_midi, instrument, save_dir, output_label, audio_path) 
 
 def process_audio(audio_path, f0, output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files):
    
@@ -110,7 +122,7 @@ def transcribe_audio(notes, filtered_amp_envelope, output_midi, instrument, save
             pm.Note(start=n['start'],
                     end=n['finish'],
                     pitch=n['pitch'],
-                    velocity=100))
+                    velocity=n['velocity']))
 
     end_audio = len(filtered_amp_envelope) * 0.01
 
@@ -126,10 +138,53 @@ def transcribe_audio(notes, filtered_amp_envelope, output_midi, instrument, save
     
     if direction :
       output_midi.write(f'{save_dir}/{output_label}.mid')
-      print("saving midi to {save_dir}/{output_label}.mid")
+      print(f"saving midi to {save_dir}/{output_label}.mid")
     else :
       output_midi.write(f'{save_dir}/{audio_path.stem + output_label}.mid')
       print(f'saving midi to :{save_dir}/{audio_path.stem + output_label}.mid')
 
+def post_process_notes(notes, duration_threshold=0.05, velocity_threshold_min=20,velocity_threshold_max=120, pitch_ranges_to_ignore=None):
+    """
+    Applique un post-traitement aux notes pour supprimer les faux positifs potentiels.
+
+    Args:
+        notes (list of dict): Liste des notes détectées.
+        duration_threshold (float): Seuil minimum pour la durée des notes à conserver (en secondes).
+        velocity_threshold (int): Seuil minimum pour la vélocité des notes à conserver.
+        pitch_ranges_to_ignore (list of tuple): Liste de tuples définissant les plages de pitch à ignorer [(min_pitch, max_pitch)].
+
+    Returns:
+        list of dict: Liste des notes après post-traitement.
+    """
+    processed_notes = []
+
+    for note in notes:
+        # Calculer la durée de la note
+        note_duration = note['finish'] - note['start']
+        
+        # Appliquer les règles de filtrage
+        if note_duration < duration_threshold:
+            continue  # Ignorer les notes trop courtes
+        
+        if note['velocity'] < velocity_threshold_min:
+            continue  # Ignorer les notes avec vélocité trop faible
+        if note['velocity'] > velocity_threshold_max:
+            continue  # Ignorer les notes avec vélocité trop faible
+        
+        if pitch_ranges_to_ignore:
+            ignore_note = False
+            for pitch_range in pitch_ranges_to_ignore:
+                if pitch_range[0] <= note['pitch'] <= pitch_range[1]:
+                    ignore_note = True
+                    break
+            if ignore_note:
+                continue  # Ignorer les notes dont le pitch est dans une plage à ignorer
+
+        # Si la note passe tous les filtres, on la garde
+        processed_notes.append(note)
+    
+    return processed_notes
 if __name__ == "__main__":
+ 
     main()  # pragma: no cover
+ 
