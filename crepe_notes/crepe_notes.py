@@ -6,6 +6,7 @@ import crepe
 from scipy.io import wavfile
 from pathlib import Path
 from fonctions import *
+from New_cnn import *
 import warnings
 warnings.filterwarnings("ignore")  
 import os
@@ -78,9 +79,10 @@ def load_audio(audio_path, cached_amp_envelope_path, default_sample_rate, detect
 def process(freqs,
             conf,
             audio_path,
+            model_path=None,
             sensitivity=0.001,
             use_smoothing=False,
-            min_duration=0.03,
+            min_duration=0.05,
             min_velocity=9,
             disable_splitting=False,
             use_cwd=True,
@@ -88,7 +90,9 @@ def process(freqs,
             detect_amplitude=True,
             save_amp_envelope=False,
             default_sample_rate=44100,
-            save_analysis_files=False,):
+            save_analysis_files=False,
+            save_onsets=True,
+            my_cnn=False):
     
     display = False
     # Etape 1 : Chargement de l'audio
@@ -125,12 +129,16 @@ def process(freqs,
 
     # Étape 3 : Détection des onsets avec madmom
     if not disable_splitting:
-
-        onsets = detect_onsets(audio_path, Display=False)
+        print("ONSETS")
+        
+        if my_cnn: 
+            print("my_cnn")
+            onsets = detect_onsets_linda(audio_path,model_path,save_onsets)
         # # Chargemnt des onsets 
-        # onset_path = audio_path.with_suffix('_onsets.txt')
-        # onsets = read_onsets(onset_path)
-        # print(onsets)
+        
+        else :
+          print("madmom")
+          onsets = detect_onsets(audio_path, Display=False)
 
     # Étape 4 : Calcul du décalage de l'accordage
     if tuning_offset == False:

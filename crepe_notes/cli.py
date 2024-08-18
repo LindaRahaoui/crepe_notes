@@ -34,11 +34,13 @@ sys.stderr = stderr
 @click.option('--save-analysis-files', is_flag=True, default=False, help='Save f0, madmom onsets and amp envelope as files')
 @click.option('--not-combined-file', is_flag=True, default=True, help='Save the prediction into one file combined')
 @click.option('--post-process', is_flag=True, default=False, help='Save the prediction into one file combined')
+@click.option('--save_onsets', is_flag=True, default=False, help='Save the onsets prediction into txt')
+@click.option('--my-cnn', is_flag=True, default=False, help='Use author CNN than Madmom')
+@click.option('--model-path', default=None, help='Directory of the model CNN for onset detection')
 @click.argument('audio_path', type=click.Path(exists=True, path_type=pathlib.Path))
 @click.help_option()
 
-
-def main(f0, audio_path, output_label, save_dir, not_combined_file, midi_tempo, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files, post_process):
+def main(f0, audio_path,model_path, output_label, save_dir, not_combined_file, midi_tempo, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files, post_process, save_onsets,my_cnn):
     if post_process:
       print("POST PROCESS ON")
     # Définir le répertoire de sauvegarde par défaut
@@ -50,6 +52,13 @@ def main(f0, audio_path, output_label, save_dir, not_combined_file, midi_tempo, 
     save_dir.mkdir(parents=True, exist_ok=True)
     
     if audio_path.is_dir():
+        audio_files = list(audio_path.glob('*.wav'))
+
+        # Vérifier si le dossier est vide
+        if not audio_files:
+            print(f"Erreur : Aucun fichier audio trouvé dans le dossier {audio_path}")
+            return  # Arrêter l'exécution du programme
+
         output_midi = pm.PrettyMIDI(initial_tempo=midi_tempo)
         instrument = pm.Instrument(program=pm.instrument_name_to_program('Acoustic Grand Piano'))
 
@@ -62,7 +71,7 @@ def main(f0, audio_path, output_label, save_dir, not_combined_file, midi_tempo, 
                 
                 for audio in audio_files:
                     audio = Path(audio)
-                    notes, filtered_amp_envelope = process_audio(audio, f0, output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files)
+                    notes, filtered_amp_envelope = process_audio(audio, f0, model_path,output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files, save_onsets,my_cnn)
                     
                     if post_process:
                         notes = post_process_notes(notes)
@@ -78,7 +87,7 @@ def main(f0, audio_path, output_label, save_dir, not_combined_file, midi_tempo, 
                     output_midi = pm.PrettyMIDI(initial_tempo=midi_tempo)
                     instrument = pm.Instrument(program=pm.instrument_name_to_program('Acoustic Grand Piano'))
                     audio = Path(audio)
-                    notes, filtered_amp_envelope = process_audio(audio, f0, output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files)
+                    notes, filtered_amp_envelope = process_audio(audio, f0, model_path, output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files, save_onsets,my_cnn)
                     
                     if post_process:
                         notes = post_process_notes(notes)
@@ -90,14 +99,14 @@ def main(f0, audio_path, output_label, save_dir, not_combined_file, midi_tempo, 
         output_midi = pm.PrettyMIDI(initial_tempo=midi_tempo)
         instrument = pm.Instrument(program=pm.instrument_name_to_program('Acoustic Grand Piano'))
         audio_path = Path(audio_path)
-        notes, filtered_amp_envelope = process_audio(audio_path, f0, output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files)
+        notes, filtered_amp_envelope = process_audio(audio_path, f0, model_path, output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files, save_onsets,my_cnn)
         
         if post_process:
             notes = post_process_notes(notes)
         
         transcribe_audio(notes, filtered_amp_envelope, output_midi, instrument, save_dir, output_label, audio_path) 
 
-def process_audio(audio_path, f0, output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files):
+def process_audio(audio_path, f0, model_path, output_label, sensitivity, min_duration, min_velocity, disable_splitting, tuning_offset, use_smoothing, use_cwd, save_analysis_files, save_onsets,my_cnn):
    
     default_f0_path = audio_path.parent / "F0" / audio_path.with_suffix(".f0.csv").name
     if not default_f0_path.exists() and f0 is None:
@@ -107,9 +116,9 @@ def process_audio(audio_path, f0, output_label, sensitivity, min_duration, min_v
     else:
         frequency, confidence = parse_f0(f0)
 
-    notes, filtered_amp_envelope = process(frequency, confidence, audio_path, sensitivity=sensitivity, use_smoothing=use_smoothing,
+    notes, filtered_amp_envelope = process(frequency, confidence, audio_path,model_path, sensitivity=sensitivity, use_smoothing=use_smoothing,
             min_duration=min_duration, min_velocity=min_velocity, disable_splitting=disable_splitting, use_cwd=use_cwd,
-            tuning_offset=tuning_offset, save_analysis_files=save_analysis_files)
+            tuning_offset=tuning_offset, save_analysis_files=save_analysis_files, save_onsets=save_onsets,my_cnn=my_cnn)
     return notes, filtered_amp_envelope
 
 def transcribe_audio(notes, filtered_amp_envelope, output_midi, instrument, save_dir, output_label,audio_path, direction=False):
