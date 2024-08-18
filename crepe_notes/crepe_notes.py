@@ -13,7 +13,7 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 def run_crepe(audio_path):
-    print("run")
+    
     sr, audio = wavfile.read(str(audio_path))
     time, frequency, confidence, activation = crepe.predict(audio, sr, viterbi=True)
     
@@ -129,15 +129,15 @@ def process(freqs,
 
     # Étape 3 : Détection des onsets avec madmom
     if not disable_splitting:
-        print("ONSETS")
+    
         
         if my_cnn: 
-            print("my_cnn")
+        
             onsets = detect_onsets_linda(audio_path,model_path,save_onsets)
         # # Chargemnt des onsets 
         
         else :
-          print("madmom")
+      
           onsets = detect_onsets(audio_path, Display=False)
 
     # Étape 4 : Calcul du décalage de l'accordage
