@@ -116,9 +116,9 @@ def process_audio(audio_path, f0, model_path, output_label, sensitivity, min_dur
     else:
         frequency, confidence = parse_f0(f0)
 
-    notes, filtered_amp_envelope = process(frequency, confidence, audio_path,model_path, sensitivity=sensitivity, use_smoothing=use_smoothing,
+    notes, filtered_amp_envelope = process(frequency, confidence, audio_path,save_onsets,model_path, sensitivity=sensitivity, use_smoothing=use_smoothing,
             min_duration=min_duration, min_velocity=min_velocity, disable_splitting=disable_splitting, use_cwd=use_cwd,
-            tuning_offset=tuning_offset, save_analysis_files=save_analysis_files, save_onsets=save_onsets,my_cnn=my_cnn)
+            tuning_offset=tuning_offset, save_analysis_files=save_analysis_files,my_cnn=my_cnn)
     return notes, filtered_amp_envelope
 
 def transcribe_audio(notes, filtered_amp_envelope, output_midi, instrument, save_dir, output_label,audio_path, direction=False):

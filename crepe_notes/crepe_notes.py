@@ -12,6 +12,41 @@ warnings.filterwarnings("ignore")
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
+def detect_onsets(audio_path,save_onsets, Display=False):
+  
+    audio_dir = audio_path.parent
+    
+    onsets_path = os.path.join(audio_dir, audio_path.stem + '.onsets.npz')
+    
+    if not os.path.exists(onsets_path):
+        print(f"Fichier des onsets non trouvé à {onsets_path}")
+        print("Lancement de la détection des onsets...")
+        
+        from madmom.features import CNNOnsetProcessor
+        
+        onset_activations = CNNOnsetProcessor()(str(audio_path))
+        if save_onsets:
+            np.savez(onsets_path, activations=onset_activations)
+            print(f"Onsets sauvegardés dans {onsets_path}")
+    else:
+        print(f"Chargement des onsets depuis {onsets_path}")
+        onset_activations = np.load(onsets_path, allow_pickle=True)['activations']
+
+    onsets = np.zeros_like(onset_activations)
+    onsets[find_peaks(onset_activations, distance=4, height=0.6)[0]] = 1
+    
+    if Display:
+        # Afficher les activations des onsets
+        plt.figure(figsize=(10, 4))
+        plt.plot(onsets)
+        plt.title("Activations des onsets")
+        plt.xlabel("Échantillons")
+        plt.ylabel("Activation")
+        plt.show()
+
+    return onsets
+
+
 def run_crepe(audio_path):
     
     sr, audio = wavfile.read(str(audio_path))
@@ -79,6 +114,7 @@ def load_audio(audio_path, cached_amp_envelope_path, default_sample_rate, detect
 def process(freqs,
             conf,
             audio_path,
+            save_onsets,
             model_path=None,
             sensitivity=0.001,
             use_smoothing=False,
@@ -91,7 +127,6 @@ def process(freqs,
             save_amp_envelope=False,
             default_sample_rate=44100,
             save_analysis_files=False,
-            save_onsets=True,
             my_cnn=False):
     
     display = False
@@ -129,16 +164,15 @@ def process(freqs,
 
     # Étape 3 : Détection des onsets avec madmom
     if not disable_splitting:
-    
         
         if my_cnn: 
-        
+          
             onsets = detect_onsets_linda(audio_path,model_path,save_onsets)
         # # Chargemnt des onsets 
         
         else :
-      
-          onsets = detect_onsets(audio_path, Display=False)
+          
+          onsets = detect_onsets(audio_path, save_onsets,Display=False)
 
     # Étape 4 : Calcul du décalage de l'accordage
     if tuning_offset == False:

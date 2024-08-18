@@ -51,24 +51,29 @@ def get_note_guessed_from_fname(note_list: list, fname: str):
     return note_name, midi_note
 
 
-
-def detect_onsets(audio_path,save_analysis_files= True, Display=False):
-    onsets_path = str(audio_path.with_suffix('.onsets.npz'))
+def detect_onsets(audio_path,save_onsets, Display=False):
+    print("madmad")
+    audio_dir = audio_path.parent
+    
+    onsets_path = os.path.join(audio_dir, audio_path.stem + '.onsets.npz')
+    
     if not os.path.exists(onsets_path):
-        print(f"Onsets file not found at {onsets_path}")
-        print("Running onset detection...")
+        print(f"Fichier des onsets non trouvé à {onsets_path}")
+        print("Lancement de la détection des onsets...")
         
         from madmom.features import CNNOnsetProcessor
         
         onset_activations = CNNOnsetProcessor()(str(audio_path))
-        if save_analysis_files:
+        if save_onsets:
             np.savez(onsets_path, activations=onset_activations)
+            print(f"Onsets sauvegardés dans {onsets_path}")
     else:
-        print(f"Loading onsets from {onsets_path}")
+        print(f"Chargement des onsets depuis {onsets_path}")
         onset_activations = np.load(onsets_path, allow_pickle=True)['activations']
 
     onsets = np.zeros_like(onset_activations)
     onsets[find_peaks(onset_activations, distance=4, height=0.6)[0]] = 1
+    
     if Display:
         # Afficher les activations des onsets
         plt.figure(figsize=(10, 4))
@@ -79,6 +84,7 @@ def detect_onsets(audio_path,save_analysis_files= True, Display=False):
         plt.show()
 
     return onsets
+
 
 def DisplayAudio(audio_path):
 
