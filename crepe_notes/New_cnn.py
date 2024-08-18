@@ -40,7 +40,7 @@ def predict_onsets(model, mel_spectrogram1_db, mel_spectrogram2_db, mel_spectrog
             segment = torch.tensor(segment, dtype=torch.float64).unsqueeze(0).to(device)  # Add batch dimension
             prediction = model(segment).squeeze().cpu().numpy()
             onsets[i:i+segment_length] += prediction
-    onsets=onsets*10
+    onsets = onsets * 10
 
     onsets = np.where(onsets > 0.02, 1, 0)
     return onsets
@@ -60,10 +60,8 @@ def plot_onsets(onsets, audio_path, sr=44100, hop_length=441):
 
     onset_times = np.arange(len(onsets)) * hop_length / sr
 
-
     plt.subplot(2, 1, 2)
     plt.plot(onset_times, onsets, label='Onset Predictions')
-
 
     plt.title('Onset Predictions')
     plt.xlabel('Time (s)')
@@ -73,32 +71,25 @@ def plot_onsets(onsets, audio_path, sr=44100, hop_length=441):
     plt.tight_layout()
     plt.show()
 
-def detect_onsets_linda(audio_path, model_path,save_onsets=True):
+def detect_onsets_linda(audio_path, model_path, save_onsets=True):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = load_model(model_path, device)
     mel_spectrogram1_db, mel_spectrogram2_db, mel_spectrogram3_db = preprocess_audio(audio_path)
     onsets = predict_onsets(model, mel_spectrogram1_db, mel_spectrogram2_db, mel_spectrogram3_db, device)
-    #create Onsets folder
-
+    
     if save_onsets:
-      onsets_folder = 'Onsets'
+        audio_dir = os.path.dirname(audio_path)
+        onsets_folder = os.path.join(audio_dir, 'Onsets')
 
-      if not os.path.exists(onsets_folder):
-          os.makedirs(onsets_folder)
-      save_path = audio_path[:-4]
+        if not os.path.exists(onsets_folder):
+            os.makedirs(onsets_folder)
+        
+        save_path = os.path.basename(audio_path)[:-4]  # Remove file extension
+        model_name = os.path.basename(model_path)[:-3]  # Remove '.pt' or similar extension
 
-      model_path= model_path[:-3]
-
-
-      save_path = save_path.split('/')[-1]+'_'+model_path.split('/')[-1]+'_onsets.txt'
-      save_path = os.path.join(onsets_folder, save_path)
-      np.savetxt(save_path, onsets)
-      print(f"Predictions saved to {save_path}")
+        save_path = f"{save_path}_{model_name}_onsets.txt"
+        save_path = os.path.join(onsets_folder, save_path)
+        np.savetxt(save_path, onsets)
+        print(f"Prédictions sauvegardées dans {save_path}")
     
     return onsets
-    
-
-
-
-
-
