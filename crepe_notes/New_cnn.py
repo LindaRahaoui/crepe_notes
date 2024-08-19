@@ -11,6 +11,7 @@ def load_model(model_path, device):
     model.eval()
     return model
 
+
 def preprocess_audio(audio_path, sr=44100, n_fft=1024, hop_length=441, n_mels=80, fmin=27.5, fmax=16000):
     y, sr = librosa.load(audio_path, sr=sr)
     mel_spectrogram1 = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, fmin=fmin, fmax=fmax)
@@ -71,13 +72,14 @@ def plot_onsets(onsets, audio_path, sr=44100, hop_length=441):
     plt.tight_layout()
     plt.show()
 
-def detect_onsets_linda(audio_path, model_path, save_onsets=True):
+def detect_onsets_linda(audio_path, model_path, save_analysis_files):
+    print("Prédictions with my cnn")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = load_model(model_path, device)
     mel_spectrogram1_db, mel_spectrogram2_db, mel_spectrogram3_db = preprocess_audio(audio_path)
     onsets = predict_onsets(model, mel_spectrogram1_db, mel_spectrogram2_db, mel_spectrogram3_db, device)
     
-    if save_onsets:
+    if save_analysis_files:
         audio_dir = os.path.dirname(audio_path)
         onsets_folder = os.path.join(audio_dir, 'Onsets')
 

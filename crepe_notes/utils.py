@@ -5,27 +5,33 @@ import torch.nn.functional as F
 from torch.utils import data
 
 #model
-class onsetCNN(nn.Module):
-	def __init__(self):
-		super(onsetCNN, self).__init__()
-		self.conv1 = nn.Conv2d(3, 10, (3,7))
-		self.pool1 = nn.MaxPool2d((3,1))
-		self.conv2 = nn.Conv2d(10, 20, 3)
-		self.pool2 = nn.MaxPool2d((3,1))
-		self.fc1 = nn.Linear(20 * 7 * 8, 256)
-		self.fc2 = nn.Linear(256,1)
-		self.dout = nn.Dropout(p=0.5)
-    	
-	def forward(self,x):
-		y=torch.tanh(self.conv1(x))
-		y=self.pool1(y)
-		y=torch.tanh(self.conv2(y))
-		y=self.pool2(y)
-		y=self.dout(y.view(-1,20*7*8))
-		y=self.dout(torch.sigmoid(self.fc1(y)))
-		y=torch.sigmoid(self.fc2(y))
-		return y
 
+class onsetCNN(nn.Module):
+    def __init__(self):
+        super(onsetCNN, self).__init__()
+        self.conv1 = nn.Conv2d(3, 32, (3, 7))
+        self.bn1 = nn.BatchNorm2d(32)
+        self.pool1 = nn.MaxPool2d((3, 1))
+
+        self.conv2 = nn.Conv2d(32, 64, 3)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.pool2 = nn.MaxPool2d((3, 1))
+
+        self.fc1 = nn.Linear(64 * 7 * 8, 256)
+        self.fc2 = nn.Linear(256, 1)
+        self.dout = nn.Dropout(p=0.5)
+
+    def forward(self, x):
+        y = torch.relu(self.bn1(self.conv1(x)))
+        y = self.pool1(y)
+        y = torch.relu(self.bn2(self.conv2(y)))
+        y = self.pool2(y)
+        y = y.view(-1, 64 * 7 * 8)
+        y = self.dout(torch.relu(self.fc1(y)))
+        y = torch.sigmoid(self.fc2(y))
+        return y
+
+   
 #data-loader(https://stanford.edu/~shervine/blog/pytorch-how-to-generate-data-parallel)
 class Dataset(data.Dataset):
   'Characterizes a dataset for PyTorch'
