@@ -12,7 +12,7 @@ warnings.filterwarnings("ignore")
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-def detect_onsets(audio_path,save_onsets, Display=False):
+def detect_onsets(audio_path,save_analysis_files, Display=False):
   
     audio_dir = audio_path.parent
     
@@ -25,7 +25,7 @@ def detect_onsets(audio_path,save_onsets, Display=False):
         from madmom.features import CNNOnsetProcessor
         
         onset_activations = CNNOnsetProcessor()(str(audio_path))
-        if save_onsets:
+        if save_analysis_files:
             np.savez(onsets_path, activations=onset_activations)
             print(f"Onsets sauvegardés dans {onsets_path}")
     else:
@@ -114,8 +114,7 @@ def load_audio(audio_path, cached_amp_envelope_path, default_sample_rate, detect
 def process(freqs,
             conf,
             audio_path,
-            save_onsets,
-            model_path=None,
+            model_path,
             sensitivity=0.001,
             use_smoothing=False,
             min_duration=0.05,
@@ -167,12 +166,12 @@ def process(freqs,
         
         if my_cnn: 
           
-            onsets = detect_onsets_linda(audio_path,model_path,save_onsets)
+            onsets = detect_onsets_linda(audio_path,model_path,save_analysis_files)
         # # Chargemnt des onsets 
         
         else :
           
-          onsets = detect_onsets(audio_path, save_onsets,Display=False)
+          onsets = detect_onsets(audio_path, save_analysis_files,Display=False)
 
     # Étape 4 : Calcul du décalage de l'accordage
     if tuning_offset == False:
